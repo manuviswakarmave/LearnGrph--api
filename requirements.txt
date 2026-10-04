@@ -1,0 +1,37 @@
+# ============================================================
+# LearnGraph API - Python Dependencies
+# ============================================================
+
+# --- REST API ---
+fastapi
+uvicorn[standard]
+python-multipart
+
+# --- Configuration / Environment ---
+pydantic-settings
+python-dotenv
+
+# --- Database ---
+sqlalchemy
+psycopg[binary]
+alembic
+
+# --- PostgreSQL Vector Search ---
+pgvector
+
+# --- PDF / Document Processing ---
+pypdf
+
+# --- HTTP Client ---
+httpx
+
+# --- LLM / NLP ---
+transformers
+sentence-transformers
+
+# --- Utilities ---
+numpy
+
+# --- Testing ---
+pytest
+pytest-asyncio
