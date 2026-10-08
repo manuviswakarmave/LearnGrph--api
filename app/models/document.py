@@ -33,3 +33,8 @@ class Document(Base):
     nullable = False,
     server_default=func.now()
     )
+
+    storage_path: Mapped[str] = mapped_column(
+        String(500),
+        nullable = False,
+    )

@@ -1,4 +1,19 @@
+# Python
 .venv/
-.env
+venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# Environment variables
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# Uploaded PDFs and local storage
+storage/
+
+# Local model files
+*.gguf

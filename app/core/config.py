@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = True
     database_url: str
+    ollama_base_url: str = "https://localhost:11434"
+    ollama_model: str = "qwen2.5.3b"
 
     model_config = SettingsConfigDict(
         env_file=".env",
