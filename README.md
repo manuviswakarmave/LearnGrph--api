@@ -1,75 +1,72 @@
 # LearnGraph API
 
-**A local-first, retrieval-augmented question generation API for university lecture material.**
+**A local-first retrieval-augmented generation (RAG) API that turns university lecture PDFs into topic-specific study questions.**
 
-LearnGraph converts uploaded lecture PDFs into topic-specific study questions. It extracts and chunks document text, stores semantic embeddings in PostgreSQL with pgvector, retrieves relevant passages, and uses a locally served **Qwen 2.5 3B** model to generate structured questions and answers with references to source chunks.
+LearnGraph extracts and chunks lecture content, indexes it with semantic embeddings in PostgreSQL, retrieves passages relevant to a requested topic, and generates structured questions and answers using a locally served open-weight language model. Each generated question includes source chunk identifiers for traceability.
 
-> **Project status:** Working local prototype. The API, retrieval pipeline, and question generation have been tested end to end. This project is **not currently cloud-hosted**, and its outputs are **not guaranteed to be factually or mathematically correct**.
+**Status:** Working local prototype. PDF ingestion, semantic retrieval, and question generation have been tested end to end. Cloud deployment is not required to run the project.
 
 ## Features
 
-- **PDF ingestion:** Upload lecture PDFs and save document metadata.
-- **Text processing:** Extract text with `pypdf`, normalize whitespace, and split content into overlapping chunks.
-- **Semantic embeddings:** Encode chunks with `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional vectors).
-- **Vector search:** Store and retrieve embeddings using PostgreSQL and `pgvector` cosine distance.
-- **Local LLM inference:** Generate questions with Qwen 2.5 3B served through Ollama—no paid LLM API required.
-- **Structured responses:** Return questions, answers, difficulty labels, concepts, and source chunk IDs, validated with Pydantic.
-- **Source ID checks:** Discard generated questions whose cited chunk IDs were not among the retrieved passages.
-- **Interactive API documentation:** Explore and test endpoints through FastAPI's Swagger UI.
+- **PDF ingestion:** Upload lecture PDFs and track their processing status.
+- **Document processing:** Extract text with `pypdf` and divide it into overlapping chunks.
+- **Semantic search:** Generate 384-dimensional embeddings using `sentence-transformers/all-MiniLM-L6-v2` and retrieve related passages with pgvector cosine distance.
+- **Local question generation:** Run `qwen2.5:3b` through Ollama without a paid LLM API.
+- **Structured responses:** Return questions, answers, difficulty labels, concepts, and source chunk UUIDs using Pydantic validation.
+- **Source traceability:** Keep only generated questions whose cited chunk IDs appear in the retrieved context.
+- **Interactive API documentation:** Explore the endpoints in FastAPI's Swagger UI.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    A[Lecture PDF] --> B[FastAPI upload endpoint]
-    B --> C[Local PDF storage + document metadata]
-    C --> D[pypdf extraction and overlapping chunks]
+    A[Lecture PDF] --> B[FastAPI upload]
+    B --> C[Local PDF storage]
+    C --> D[pypdf text extraction and chunking]
     D --> E[MiniLM embeddings]
     E --> F[(PostgreSQL + pgvector)]
-    G[Topic query] --> H[MiniLM query embedding]
-    H --> I[Cosine similarity retrieval]
+    G[Topic query] --> H[Query embedding]
+    H --> I[Cosine similarity search]
     F --> I
-    I --> J[Retrieved text + source chunk IDs]
-    J --> K[Ollama / Qwen 2.5 3B]
-    K --> L[Pydantic schema validation]
-    L --> M[Retrieved source-ID validation]
-    M --> N[JSON questions and answers]
+    I --> J[Relevant chunks + source IDs]
+    J --> K[Ollama: Qwen 2.5 3B]
+    K --> L[Pydantic validation]
+    L --> M[Source ID verification]
+    M --> N[Questions and answers as JSON]
 ```
 
-**Current execution environment:** FastAPI, embedding inference, and Ollama run locally; PostgreSQL with pgvector runs in Docker. Full multi-service containerization is planned.
+The current development setup runs **PostgreSQL with pgvector in Docker**, while **FastAPI, MiniLM, and Ollama run locally**.
 
-## Tech Stack
+## Technology Stack
 
-| Layer | Technology |
+| Component | Technology |
 | --- | --- |
 | API | Python, FastAPI, Uvicorn |
-| Data validation | Pydantic |
-| Database and ORM | PostgreSQL, SQLAlchemy, Alembic |
-| Vector database functionality | pgvector |
-| PDF parsing | pypdf |
-| Embeddings | Sentence Transformers, `all-MiniLM-L6-v2` |
-| Language model | `qwen2.5:3b` via Ollama |
-| LLM HTTP client | HTTPX |
+| Database | PostgreSQL, SQLAlchemy |
+| Schema migrations | Alembic |
+| Vector search | pgvector |
+| PDF extraction | pypdf |
+| Embeddings | Sentence Transformers (`all-MiniLM-L6-v2`) |
+| Language model | Qwen 2.5 3B (`qwen2.5:3b`) |
+| Model serving | Ollama |
+| LLM communication | HTTPX |
+| Validation | Pydantic |
 | Local database infrastructure | Docker Compose |
 
-## API Endpoints
+## API
 
-The application currently exposes the following routes under `/api/v1`:
+Endpoints are available under `/api/v1`.
 
-| Method | Route | Description |
+| Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `POST` | `/documents` | Upload a PDF |
-| `GET` | `/documents/{document_id}` | Retrieve document metadata |
-| `POST` | `/documents/{document_id}/process` | Extract and chunk PDF text |
-| `POST` | `/documents/{document_id}/embed` | Generate and store missing chunk embeddings |
-| `GET` | `/documents/{document_id}/search?query=...&limit=5` | Retrieve semantically similar chunks |
-| `POST` | `/documents/{document_id}/generate-questions` | Generate topic-specific questions from retrieved chunks |
-
-> **Routing note:** Check the paths shown in your running `/docs` page. If your router and endpoint both include `/documents`, you may temporarily see `/api/v1/documents/documents/{document_id}/generate-questions`; remove the duplicate segment in the route decorator.
+| `GET` | `/documents/{document_id}` | Get document metadata |
+| `POST` | `/documents/{document_id}/process` | Extract and chunk document text |
+| `POST` | `/documents/{document_id}/embed` | Generate and store chunk embeddings |
+| `GET` | `/documents/{document_id}/search?query=...&limit=5` | Search document chunks by semantic similarity |
+| `POST` | `/documents/{document_id}/generate-questions` | Generate questions about a topic |
 
 ### Example: Generate Questions
-
-**Request**
 
 ```http
 POST /api/v1/documents/{document_id}/generate-questions
@@ -83,58 +80,69 @@ Content-Type: application/json
 }
 ```
 
-**Example response (abridged; illustrative)**
+Example response (shortened):
 
 ```json
 {
   "questions": [
     {
-      "question": "How does PCA differ from ICA in its objective?",
-      "answer": "PCA finds directions that maximize variance, while ICA seeks statistically independent components.",
+      "question": "How does PCA differ from ICA in terms of their objectives?",
+      "answer": "PCA seeks directions of maximum variance, while ICA seeks statistically independent components.",
       "difficulty": "medium",
-      "concepts": ["PCA", "ICA", "Statistical Independence"],
-      "source_chunk_ids": ["00000000-0000-0000-0000-000000000000"]
+      "concepts": ["PCA", "ICA"],
+      "source_chunk_ids": ["79dc4dd2-e1e5-4aba-9b7b-bfb81f07c0ae"]
     }
   ]
 }
 ```
 
-The UUID above is a placeholder; actual responses contain UUIDs of retrieved chunks in your database. The number of returned questions may be lower than requested if the model produces fewer valid results.
+The response above illustrates the API structure; actual questions and source IDs depend on the uploaded document. The model may return fewer questions than requested.
 
-## Running Locally
+## Getting Started
 
 ### Prerequisites
 
-- Python and a virtual environment
+- Python 3 and Git
 - Docker Desktop with Docker Compose
-- Ollama installed and running locally
-- Git
-- Sufficient RAM and disk space to run Qwen 2.5 3B, MiniLM, and PostgreSQL
+- Ollama
+- Enough memory and disk space for PostgreSQL, MiniLM, and the Qwen 2.5 3B model
 
-> **Note:** These are development instructions for the current local-first setup, not a one-command production deployment. Check your repository's dependency and Docker Compose filenames and adjust commands if they differ.
-
-### 1. Clone and configure
+### 1. Clone the repository
 
 ```bash
-git clone <YOUR_GITHUB_REPOSITORY_URL>
-cd LearnGraph--api
+git clone https://github.com/manuviswakarmave/LearnGrph--api.git
+cd LearnGrph--api
+```
+
+### 2. Set up Python
+
+Create a virtual environment:
+
+```bash
 python -m venv .venv
 ```
 
-Activate the virtual environment:
+Activate it on **Windows PowerShell**:
 
 ```powershell
-# Windows PowerShell
 .\.venv\Scripts\Activate.ps1
 ```
 
-Install dependencies using the dependency manifest in the repository (for example, if `requirements.txt` exists):
+Or on **macOS/Linux**:
+
+```bash
+source .venv/bin/activate
+```
+
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Create a local `.env` file (do **not** commit it):
+### 3. Configure environment variables
+
+Create a `.env` file in the repository root:
 
 ```dotenv
 DATABASE_URL=postgresql+psycopg://learngraph:learngraph_dev@localhost:5432/learngraph
@@ -142,112 +150,108 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen2.5:3b
 ```
 
-These credentials are **local development examples only**. Use distinct, securely managed credentials for any public deployment.
+These credentials are intended for local development only. Do not commit `.env` or reuse development credentials in a public deployment.
 
-### 2. Start PostgreSQL
-
-Use the repository's existing Docker Compose configuration:
+### 4. Start PostgreSQL
 
 ```bash
 docker compose up -d
 ```
 
-Ensure the database has the `vector` extension enabled. If the Compose initialization or migrations do not create it automatically, execute the following against the development database:
+Enable the pgvector extension in the development database if it is not already enabled:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-Run database migrations:
+Apply the database migrations:
 
 ```bash
 alembic upgrade head
 ```
 
-### 3. Start Ollama and download the model
+### 5. Start Ollama
+
+Install and start Ollama, then download the model:
 
 ```bash
 ollama pull qwen2.5:3b
 ```
 
-Ensure the Ollama service is running and accessible at `http://localhost:11434`. Model weights are downloaded locally and are not stored in this Git repository.
+Ensure the Ollama API is available at `http://localhost:11434`.
 
-### 4. Start the API
+### 6. Run FastAPI
 
 ```bash
 python -m uvicorn app.main:app --reload --port 8001
 ```
 
-Open the interactive API documentation:
+Open **Swagger UI** at **http://localhost:8001/docs**.
 
-`http://localhost:8001/docs`
+### 7. Try the complete pipeline
 
-### 5. Try the pipeline
+1. Upload a lecture PDF using `POST /api/v1/documents`.
+2. Copy the returned document UUID.
+3. Process the document using `POST /api/v1/documents/{document_id}/process`.
+4. Create embeddings using `POST /api/v1/documents/{document_id}/embed`.
+5. Search for a topic using `GET /api/v1/documents/{document_id}/search`.
+6. Generate questions using `POST /api/v1/documents/{document_id}/generate-questions`.
 
-1. Upload a lecture PDF with `POST /api/v1/documents` and copy its `document_id`.
-2. Process the document using `POST /api/v1/documents/{document_id}/process`.
-3. Generate embeddings with `POST /api/v1/documents/{document_id}/embed`.
-4. Test retrieval with `GET /api/v1/documents/{document_id}/search`.
-5. Generate questions with `POST /api/v1/documents/{document_id}/generate-questions`.
-
-The first embedding request may take longer because Sentence Transformers downloads the MiniLM model.
-
-## Demo
-
-**Demo video:** _Coming soon_  
-**Screenshots:** _Coming soon_
-
-A planned short walkthrough will show PDF upload, chunking, embedding, semantic search, and question generation through Swagger UI. This lets reviewers evaluate the application without installing the models themselves.
+The first embedding operation may download the MiniLM model and take longer than subsequent requests. Question generation time depends on local hardware and model loading.
 
 ## Current Limitations
 
-- **No cloud deployment:** The application currently runs locally.
-- **Model hallucinations:** Qwen may produce incorrect or unsupported claims, including mistakes in mathematical notation. Structured JSON and valid source UUIDs do **not** prove factual correctness.
-- **Limited grounding verification:** The current implementation verifies that cited UUIDs belong to retrieved chunks, but does not establish that each answer is supported by the cited text.
-- **Retrieval quality:** Nearest-neighbor search can return irrelevant passages when no sufficiently relevant passage exists; a calibrated relevance threshold is not yet implemented.
-- **Error handling:** Document-state validation and graceful handling of model failures need improvement.
-- **No authentication or rate limiting:** The API should not be exposed publicly without additional safeguards.
-- **Local orchestration:** Only PostgreSQL is currently containerized; API and Ollama setup still require manual steps.
+- **Local execution:** The application is not currently hosted on a public cloud server.
+- **Grounding:** Source IDs are checked against retrieved chunks, but the system does not yet verify that each answer is factually supported by its cited passage.
+- **Mathematical accuracy:** The LLM can produce incorrect formulas or explanations even when its JSON is valid.
+- **Retrieval relevance:** Nearest-neighbor retrieval may return unrelated passages if the requested topic is absent from a document.
+- **Error handling:** Document-state checks and graceful handling of Ollama failures need further development.
+- **Security:** Authentication and rate limiting are not yet implemented; the current API is intended for local use.
+- **Setup:** PostgreSQL is containerized, but the complete application is not yet managed by a single Docker Compose setup.
 
 ## Roadmap
 
-### Near term — Reliability and developer experience
+### Reliability and reproducibility
 
-- [ ] Add explicit document existence and processing-state checks (`404` / `409`).
-- [ ] Handle Ollama timeouts, connection errors, and invalid model responses cleanly.
-- [ ] Introduce retrieval relevance thresholds and context-length limits.
-- [ ] Add automated unit and integration tests for ingestion, retrieval, and generation.
-- [ ] Remove verbose debug output and introduce structured logging.
-- [ ] Add an `.env.example` and verify a fresh-clone setup.
-- [ ] Containerize FastAPI and Ollama, and provide a reproducible Docker Compose setup.
-- [ ] Publish a short demo video and API screenshots.
+- [ ] Add document existence and processing-state validation.
+- [ ] Handle Ollama connection failures, timeouts, and invalid model responses.
+- [ ] Introduce retrieval relevance thresholds and context-size limits.
+- [ ] Add automated unit and integration tests.
+- [ ] Replace verbose debug output with structured logging.
+- [ ] Provide a reproducible multi-container Docker Compose setup.
+- [ ] Add a short demonstration video and API screenshots.
 
-### Medium term — Educational features
+### Question quality and educational features
 
-- [ ] Let users request question difficulty and question type.
-- [ ] Add stronger answer-grounding checks against cited source passages.
-- [ ] Include human-readable evidence snippets and page references.
-- [ ] Detect duplicate or overly similar generated questions.
-- [ ] Persist generated question sets and support retrieval of past results.
-- [ ] Evaluate generation quality on a small curated set of lecture materials.
+- [ ] Allow users to request difficulty levels and question types.
+- [ ] Verify answer grounding against cited source passages.
+- [ ] Include evidence snippets and page references in generated responses.
+- [ ] Detect duplicate or highly similar questions.
+- [ ] Save generated question sets for later retrieval.
+- [ ] Evaluate output quality against a curated lecture-question dataset.
 
-### Longer term — Deployment and productization
+### Deployment and product development
 
-- [ ] Explore low-cost or free-tier hosting for the API, database, and model inference.
-- [ ] Add authentication, access controls, and rate limiting.
-- [ ] Introduce asynchronous/background processing for longer PDF and inference jobs.
-- [ ] Add monitoring, resource limits, and model-serving configuration.
-- [ ] Build a simple frontend for document upload, topic selection, and question review.
+- [ ] Explore cloud hosting for the API, database, and model inference.
+- [ ] Add authentication, authorization, and rate limiting.
+- [ ] Move longer document and inference operations to background jobs.
+- [ ] Add monitoring and resource-management controls.
+- [ ] Build a frontend for uploading lectures and reviewing questions.
 
-Roadmap items are **planned features**, not current capabilities.
+## Engineering Decisions
 
-## Design Notes
+**Why PostgreSQL with pgvector?** It keeps relational document metadata and vector embeddings in the same database, simplifying the initial architecture.
 
-- **Why pgvector?** It allows relational document metadata and vector embeddings to live in one PostgreSQL database.
-- **Why local Qwen?** It enables experimentation with open-weight model serving without relying on a paid third-party inference API.
-- **Why structured output?** Pydantic makes the API response shape predictable and rejects invalid schema data. It does not verify the correctness of the answer itself.
-- **Why source chunk IDs?** They provide traceability from generated output back to retrieved lecture passages, forming a foundation for future grounding verification.
+**Why MiniLM?** Its compact, 384-dimensional embeddings make semantic search practical on local hardware.
 
-## Project Status
+**Why Qwen through Ollama?** It allows the application to serve an open-weight model locally without depending on a paid inference API.
 
-LearnGraph is an actively developed educational AI/backend engineering portfolio project. Contributions, feedback, and suggestions are welcome.
+**Why structured JSON?** Pydantic provides a predictable API contract and validates field types and constraints. It does not guarantee the correctness of the generated content.
+
+**Why source chunk IDs?** They make generated output traceable to retrieved material and provide a foundation for stronger evidence-based validation.
+
+## Repository
+
+**Source code:** https://github.com/manuviswakarmave/LearnGrph--api
+
+LearnGraph is an ongoing AI and backend engineering project focused on building reproducible, source-aware educational question generation.
